@@ -3,18 +3,17 @@
 """ This file contains some utils for connecting to Rapid7 Insight
     as well as storing logs in a queue and sending them."""
 
-VERSION = '2.0.7'
-
-from r7insight import helpers as le_helpers
+VERSION = "2.0.7"
 
 import logging
-import threading
-import socket
 import random
+import socket
+import threading
 import time
 
 import certifi
 
+from r7insight import helpers as le_helpers
 
 # Size of the internal event queue
 QUEUE_SIZE = 32768
@@ -28,16 +27,17 @@ MIN_DELAY = 0.1
 # Maximum delay (in seconds) between attempts to reconnect
 MAX_DELAY = 10
 # Unicode Line separator character   \u2028
-LINE_SEP = le_helpers.to_unicode('\u2028')
+LINE_SEP = le_helpers.to_unicode("\u2028")
 
 
 # LE appender signature - used for debugging messages
 LE = "LE: "
 # Error message displayed when an incorrect Token has been detected
-INVALID_TOKEN = ("\n\nIt appears the R7INSIGHT_TOKEN "
-                 "parameter you entered is incorrect!\n\n")
+INVALID_TOKEN = (
+    "\n\nIt appears the R7INSIGHT_TOKEN " "parameter you entered is incorrect!\n\n"
+)
 
-INVALID_REGION = ("\n\nIt appears the REGION is invalid\n\n")
+INVALID_REGION = "\n\nIt appears the REGION is invalid\n\n"
 
 
 def dbg(msg):
@@ -45,7 +45,13 @@ def dbg(msg):
 
 
 class PlainTextSocketAppender(threading.Thread):
-    def __init__(self, verbose=True, le_data=LE_ENDPOINT_DEFAULT, le_port=LE_PORT_DEFAULT, le_tls_port=LE_TLS_PORT_DEFAULT):
+    def __init__(
+        self,
+        verbose=True,
+        le_data=LE_ENDPOINT_DEFAULT,
+        le_port=LE_PORT_DEFAULT,
+        le_tls_port=LE_TLS_PORT_DEFAULT,
+    ):
         threading.Thread.__init__(self)
 
         # Rapid7 Logs DATA server address
@@ -67,7 +73,6 @@ class PlainTextSocketAppender(threading.Thread):
         self._conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._conn.connect((self.le_data, self.le_port))
 
-
     def reopen_connection(self):
         self.close_connection()
 
@@ -81,7 +86,7 @@ class PlainTextSocketAppender(threading.Thread):
                     dbg("Unable to connect to R7Insight")
 
             root_delay *= 2
-            if(root_delay > MAX_DELAY):
+            if root_delay > MAX_DELAY:
                 root_delay = MAX_DELAY
 
             wait_for = root_delay + random.uniform(0, root_delay)
@@ -108,15 +113,14 @@ class PlainTextSocketAppender(threading.Thread):
                 # Replace newlines with Unicode line separator
                 # for multi-line events
                 if not le_helpers.is_unicode(data):
-                    multiline = le_helpers.create_unicode(data).replace(
-                        '\n', LINE_SEP)
+                    multiline = le_helpers.create_unicode(data).replace("\n", LINE_SEP)
                 else:
-                    multiline = data.replace('\n', LINE_SEP)
+                    multiline = data.replace("\n", LINE_SEP)
                 multiline += "\n"
                 # Send data, reconnect if needed
                 while True:
                     try:
-                        self._conn.send(multiline.encode('utf-8'))
+                        self._conn.send(multiline.encode("utf-8"))
                     except socket.error:
                         self.reopen_connection()
                         continue
@@ -127,37 +131,61 @@ class PlainTextSocketAppender(threading.Thread):
 
         self.close_connection()
 
+
 SocketAppender = PlainTextSocketAppender
 
 try:
     import ssl
+
     ssl_supported = True
 except ImportError:  # for systems without TLS support.
     ssl_supported = False
     dbg("Unable to import ssl module.")
 else:
+
     class TLSSocketAppender(PlainTextSocketAppender):
         def open_connection(self):
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock = ssl.wrap_socket(
-                sock=sock,
-                keyfile=None,
-                certfile=None,
-                server_side=False,
-                cert_reqs=ssl.CERT_REQUIRED,
-                ssl_version=ssl.PROTOCOL_TLSv1_2,
-                ca_certs=certifi.where(),
-                do_handshake_on_connect=True,
-                suppress_ragged_eofs=True,
-            )
+            try:
+                sock = ssl.wrap_socket(
+                    sock=sock,
+                    keyfile=None,
+                    certfile=None,
+                    server_side=False,
+                    cert_reqs=ssl.CERT_REQUIRED,
+                    ssl_version=ssl.PROTOCOL_TLSv1_2,
+                    ca_certs=certifi.where(),
+                    do_handshake_on_connect=True,
+                    suppress_ragged_eofs=True,
+                )
 
+            except AttributeError:
+                context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+                context.verify_mode = ssl.CERT_REQUIRED
+                context.load_verify_locations(cafile=certifi.where())
+                sock = context.wrap_socket(
+                    sock=sock,
+                    server_hostname=self.le_data,
+                    do_handshake_on_connect=True,
+                    suppress_ragged_eofs=True,
+                )
             sock.connect((self.le_data, self.le_tls_port))
             self._conn = sock
 
+
 class R7InsightHandler(logging.Handler):
-    def __init__(self, token, region, use_tls=True, verbose=True, format=None,
-    le_data=LE_ENDPOINT_DEFAULT, le_port=LE_PORT_DEFAULT, le_tls_port=LE_TLS_PORT_DEFAULT,
-    allow_plaintext_fallback=False):
+    def __init__(
+        self,
+        token,
+        region,
+        use_tls=True,
+        verbose=True,
+        format=None,
+        le_data=LE_ENDPOINT_DEFAULT,
+        le_port=LE_PORT_DEFAULT,
+        le_tls_port=LE_TLS_PORT_DEFAULT,
+        allow_plaintext_fallback=False,
+    ):
         logging.Handler.__init__(self)
         self.token = token
         self.region = region
@@ -179,17 +207,25 @@ class R7InsightHandler(logging.Handler):
         le_data = le_data.format(region)
 
         if format is None:
-            format = logging.Formatter('%(asctime)s : %(levelname)s, %(message)s',
-                                       '%a %b %d %H:%M:%S %Z %Y')
+            format = logging.Formatter(
+                "%(asctime)s : %(levelname)s, %(message)s", "%a %b %d %H:%M:%S %Z %Y"
+            )
         self.setFormatter(format)
 
         self.setLevel(logging.DEBUG)
 
         if not use_tls or (not ssl_supported and allow_plaintext_fallback):
-            self._thread = SocketAppender(verbose=verbose, le_data=le_data, le_port=le_port, le_tls_port=le_tls_port)
+            self._thread = SocketAppender(
+                verbose=verbose,
+                le_data=le_data,
+                le_port=le_port,
+                le_tls_port=le_tls_port,
+            )
             return
 
-        self._thread = TLSSocketAppender(verbose=verbose, le_data=le_data, le_port=le_port, le_tls_port=le_tls_port)
+        self._thread = TLSSocketAppender(
+            verbose=verbose, le_data=le_data, le_port=le_port, le_tls_port=le_tls_port
+        )
 
     def flush(self):
         # wait for all queued logs to be send
@@ -205,10 +241,10 @@ class R7InsightHandler(logging.Handler):
                 self._thread.start()
                 if self.verbose:
                     dbg("Starting Rapid7 Insight Asynchronous Socket Appender")
-            except RuntimeError: # It's already started.
+            except RuntimeError:  # It's already started.
                 pass
 
-        msg = self.format(record).rstrip('\n')
+        msg = self.format(record).rstrip("\n")
         msg = self.token + msg
 
         try:
